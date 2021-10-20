@@ -405,6 +405,25 @@ export function importAnalysisPlugin(config: ResolvedConfig): Plugin {
                   str().overwrite(start, end, url)
                 }
               }
+            } else if (
+              config.resolve.allowedBuiltIns &&
+              config.resolve.allowedBuiltIns.includes(specifier)
+            ) {
+              const exp = source.slice(expStart, expEnd)
+              const rewritten = transformBuiltinCjsImport(exp, rawUrl, index)
+              process.stdout.write(
+                `importing a builtin (${specifier}), url would be ${url}, statement is "${source.slice(
+                  expStart,
+                  expEnd
+                )}", rewriting to "${rewritten}"\n`
+              )
+
+              if (rewritten) {
+                str().overwrite(expStart, expEnd, rewritten)
+              } else {
+                // #1439 export * from '...'
+                str().overwrite(start, end, url)
+              }
             } else {
               str().overwrite(start, end, isDynamicImport ? `'${url}'` : url)
             }
@@ -631,6 +650,70 @@ function transformCjsImport(
       `__vite__cjsImport${importIndex}_${rawUrl}`
     )
     const lines: string[] = [`import ${cjsModuleName} from "${url}"`]
+    importNames.forEach(({ importedName, localName }) => {
+      if (importedName === '*') {
+        lines.push(`const ${localName} = ${cjsModuleName}`)
+      } else if (importedName === 'default') {
+        lines.push(
+          `const ${localName} = ${cjsModuleName}.__esModule ? ${cjsModuleName}.default : ${cjsModuleName}`
+        )
+      } else {
+        lines.push(`const ${localName} = ${cjsModuleName}["${importedName}"]`)
+      }
+    })
+    return lines.join('; ')
+  }
+}
+
+/**
+ * Electron builtins must use a require() call even within an ESM context.
+ *
+ * This transforms calls to these builtins with a similar method to the above.
+ */
+function transformBuiltinCjsImport(
+  importExp: string,
+  rawUrl: string,
+  importIndex: number
+): string | undefined {
+  const node = (
+    parseJS(importExp, {
+      ecmaVersion: 'latest',
+      sourceType: 'module'
+    }) as any
+  ).body[0] as Node
+
+  if (node.type === 'ImportDeclaration') {
+    if (!node.specifiers.length) {
+      return `global.require("${rawUrl}")`
+    }
+
+    const importNames: ImportNameSpecifier[] = []
+    for (const spec of node.specifiers) {
+      if (
+        spec.type === 'ImportSpecifier' &&
+        spec.imported.type === 'Identifier'
+      ) {
+        const importedName = spec.imported.name
+        const localName = spec.local.name
+        importNames.push({ importedName, localName })
+      } else if (spec.type === 'ImportDefaultSpecifier') {
+        importNames.push({
+          importedName: 'default',
+          localName: spec.local.name
+        })
+      } else if (spec.type === 'ImportNamespaceSpecifier') {
+        importNames.push({ importedName: '*', localName: spec.local.name })
+      }
+    }
+
+    // If there is multiple import for same id in one file,
+    // importIndex will prevent the cjsModuleName to be duplicate
+    const cjsModuleName = makeLegalIdentifier(
+      `__vite__builtInCjsImport${importIndex}_${rawUrl}`
+    )
+    const lines: string[] = [
+      `const ${cjsModuleName} = global.require("${rawUrl}")`
+    ]
     importNames.forEach(({ importedName, localName }) => {
       if (importedName === '*') {
         lines.push(`const ${localName} = ${cjsModuleName}`)

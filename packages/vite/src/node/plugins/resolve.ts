@@ -34,6 +34,7 @@ import { resolve as _resolveExports } from 'resolve.exports'
 // special id for paths marked with browser: false
 // https://github.com/defunctzombie/package-browser-field-spec#ignore-a-module
 export const browserExternalId = '__vite-browser-external'
+export const builtinExternalId = '__vite-builtin-external'
 
 const isDebug = process.env.DEBUG
 const debug = createDebugger('vite:resolve-details', {
@@ -46,6 +47,13 @@ export interface ResolveOptions {
   extensions?: string[]
   dedupe?: string[]
   preserveSymlinks?: boolean
+
+  /**
+   * Some target environments allow node builtins. This is an allowlist for these builtins.
+   *
+   * For example, in an Electron environment, add `electron` and the node builtins to this array.
+   */
+  allowedBuiltIns?: string[]
 }
 
 export interface InternalResolveOptions extends ResolveOptions {
@@ -80,7 +88,7 @@ export function resolvePlugin(baseOptions: InternalResolveOptions): Plugin {
   }
   let server: ViteDevServer | undefined
 
-  const { target: ssrTarget, noExternal: ssrNoExternal } = ssrConfig ?? {}
+  const { /*target: ssrTarget,*/ noExternal: ssrNoExternal } = ssrConfig ?? {}
 
   return {
     name: 'vite:resolve',
@@ -94,12 +102,16 @@ export function resolvePlugin(baseOptions: InternalResolveOptions): Plugin {
         return id
       }
 
+      if (id.startsWith(builtinExternalId)) {
+        return id
+      }
+
       // fast path for commonjs proxy modules
       if (/\?commonjs/.test(id) || id === 'commonjsHelpers.js') {
         return
       }
 
-      const targetWeb = !ssr || ssrTarget === 'webworker'
+      const targetWeb = false // !ssr || ssrTarget === 'webworker'
 
       // this is passed by @rollup/plugin-commonjs
       const isRequire =
@@ -197,6 +209,13 @@ export function resolvePlugin(baseOptions: InternalResolveOptions): Plugin {
         return res
       }
 
+      // externalize if on the explicit list of allowed builtins
+      // This list may include imports not considered a builtin by isBuiltin, such as `electron`
+      // Must be before the node resolve
+      if (options.allowedBuiltIns && options.allowedBuiltIns.includes(id)) {
+        return `${builtinExternalId}:${id}`
+      }
+
       // external
       if (isExternalUrl(id)) {
         return {
@@ -242,7 +261,7 @@ export function resolvePlugin(baseOptions: InternalResolveOptions): Plugin {
         }
 
         // node built-ins.
-        // externalize if building for SSR, otherwise redirect to empty module
+        // externalize if building for SSR or explitly allowed, otherwise redirect to empty module
         if (isBuiltin(id)) {
           if (ssr) {
             if (ssrNoExternal === true) {
@@ -289,6 +308,12 @@ export function resolvePlugin(baseOptions: InternalResolveOptions): Plugin {
     )}" has been externalized for browser compatibility and cannot be accessed in client code.')
   }
 })`
+      }
+      if (id.startsWith(builtinExternalId)) {
+        const originalId = id.slice(builtinExternalId.length + 1)
+        process.stdout.write(`load resolve proxied builtin: ${originalId}\n`)
+
+        return `export default require("${originalId}");`
       }
     }
   }

@@ -8,7 +8,7 @@ import {
   normalizePath,
   isExternalUrl
 } from '../utils'
-import { browserExternalId } from '../plugins/resolve'
+import { browserExternalId, builtinExternalId } from '../plugins/resolve'
 import { ExportsData } from '.'
 
 const externalTypes = [
@@ -114,6 +114,28 @@ export function esbuildDepPlugin(
           // use vite's own resolver
           const resolved = await resolve(id, importer, kind)
           if (resolved) {
+            // If it's on the list of allowed builtins, they should be external
+            if (
+              config.resolve.allowedBuiltIns &&
+              config.resolve.allowedBuiltIns.includes(resolved)
+            ) {
+              process.stdout.write(
+                `esbuild-dep-plugin resolved ${resolved} ${id}\n`
+              )
+
+              return {
+                path: id,
+                namespace: 'builtin-external'
+              }
+            }
+
+            if (resolved.startsWith(builtinExternalId)) {
+              return {
+                path: id,
+                namespace: 'builtin-external'
+              }
+            }
+
             if (resolved.startsWith(browserExternalId)) {
               return {
                 path: id,
@@ -126,6 +148,7 @@ export function esbuildDepPlugin(
                 external: true
               }
             }
+
             return {
               path: path.resolve(resolved)
             }
@@ -193,6 +216,21 @@ export function esbuildDepPlugin(
               `browser compatibility and cannot be accessed in client code.')
   }
 })`
+          }
+        }
+      )
+
+      build.onLoad(
+        { filter: /.*/, namespace: 'builtin-external' },
+        ({ path: id }) => {
+          process.stdout.write(
+            `esbuild dep plugin onLoad proxied builtin: ${id}\n`
+          )
+
+          return {
+            loader: 'js' as Loader,
+            contents: `export default require("${id}");`,
+            resolveDir: root
           }
         }
       )
