@@ -412,10 +412,7 @@ export function importAnalysisPlugin(config: ResolvedConfig): Plugin {
               const exp = source.slice(expStart, expEnd)
               const rewritten = transformBuiltinCjsImport(exp, rawUrl, index)
               process.stdout.write(
-                `importing a builtin (${specifier}), url would be ${url}, statement is "${source.slice(
-                  expStart,
-                  expEnd
-                )}", rewriting to "${rewritten}"\n`
+                `importing a builtin (${specifier}), rewriting to be cjs import\n`
               )
 
               if (rewritten) {

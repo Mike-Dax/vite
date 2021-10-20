@@ -33,6 +33,8 @@ const externalTypes = [
   ...KNOWN_ASSET_TYPES
 ]
 
+const builtInExternalNamespace = `builtin-external`
+
 export function esbuildDepPlugin(
   qualified: Record<string, string>,
   exportsData: Record<string, ExportsData>,
@@ -125,14 +127,16 @@ export function esbuildDepPlugin(
 
               return {
                 path: id,
-                namespace: 'builtin-external'
+                namespace: builtInExternalNamespace,
+                external: true
               }
             }
 
             if (resolved.startsWith(builtinExternalId)) {
               return {
                 path: id,
-                namespace: 'builtin-external'
+                namespace: builtInExternalNamespace,
+                external: true
               }
             }
 
@@ -220,20 +224,19 @@ export function esbuildDepPlugin(
         }
       )
 
-      build.onLoad(
-        { filter: /.*/, namespace: 'builtin-external' },
-        ({ path: id }) => {
-          process.stdout.write(
-            `esbuild dep plugin onLoad proxied builtin: ${id}\n`
-          )
+      // build.onLoad(
+      //   { filter: /.*/, namespace: builtInExternalNamespace },
+      //   ({ path: id }) => {
+      //     process.stdout.write(
+      //       `esbuild dep plugin onLoad proxied builtin: ${id}\n`
+      //     )
 
-          return {
-            loader: 'js' as Loader,
-            contents: `export default require("${id}");`,
-            resolveDir: root
-          }
-        }
-      )
+      //     return {
+      //       loader: 'js' as Loader,
+      //       resolveDir: root
+      //     }
+      //   }
+      // )
 
       // yarn 2 pnp compat
       if (isRunningWithYarnPnp) {

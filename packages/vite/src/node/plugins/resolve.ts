@@ -309,12 +309,6 @@ export function resolvePlugin(baseOptions: InternalResolveOptions): Plugin {
   }
 })`
       }
-      if (id.startsWith(builtinExternalId)) {
-        const originalId = id.slice(builtinExternalId.length + 1)
-        process.stdout.write(`load resolve proxied builtin: ${originalId}\n`)
-
-        return `export default require("${originalId}");`
-      }
     }
   }
 }
