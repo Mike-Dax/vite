@@ -77,7 +77,8 @@ export const KNOWN_ASSET_TYPES = [
   // other
   'wasm',
   'webmanifest',
-  'pdf'
+  'pdf',
+  'node'
 ]
 
 export const DEFAULT_ASSETS_RE = new RegExp(
